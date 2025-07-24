@@ -2,7 +2,8 @@
 *.log
 *.tmp
 temp/
-config/*.csv       # if you don’t want to commit sensitive config
+# Never commit VM creds
+config/vm_credentials.csv
 # OS files
 .DS_Store
 Thumbs.db
