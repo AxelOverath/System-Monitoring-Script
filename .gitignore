@@ -1,0 +1,8 @@
+# PowerShell temp files
+*.log
+*.tmp
+temp/
+config/*.csv       # if you don’t want to commit sensitive config
+# OS files
+.DS_Store
+Thumbs.db
