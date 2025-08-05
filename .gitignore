@@ -4,6 +4,7 @@
 temp/
 # Never commit VM creds
 config/vm_credentials.csv
+config/secrets.psd1
 # OS files
 .DS_Store
 Thumbs.db

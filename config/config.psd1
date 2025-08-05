@@ -1,7 +1,11 @@
 @{
     # Database connection info
-    DbServer    = 'sql01.contoso.local'
-    DbName      = 'SystemHealth'
+    DbType     = 'MySql'
+    DbServer   = 'localhost'
+    DbPort     = 3306
+    DbName     = 'system_health'
+    DbUser     = '' # Set in secrets.psd1
+    DbPassword = '' # Set in secrets.psd1
 
     # Alert thresholds (percent)
     CpuThreshold    = 85

@@ -1,18 +1,17 @@
 <#
 .SYNOPSIS
-    Module for importing VM credentials and collecting system metrics via SSH key authentication with connectivity checks.
+    Module for importing VM credentials and collecting system metrics via parallel PowerShell jobs.
 .DESCRIPTION
-    Contains functions to load VM connection details from a CSV (including required KeyPath and optional Port)
-    and to gather CPU, memory, and disk usage from Linux servers via PowerShell SSH remoting.
-    Includes a ping check to skip unreachable hosts and logs progress per-VM.
-    **Only key-based SSH is supported non-interactively.**
+    Reads VM connection details from a CSV (Server, Username, KeyPath, Port) and spins up
+    background jobs for each Linux VM. Includes connectivity checks and logs progress.
+    Provides job-based collection, allowing later retrieval for database insertion.
 #>
 
 <#
 .SYNOPSIS
     Imports VM connection info from a CSV file.
 .DESCRIPTION
-    Reads a CSV with columns: Server, Username, KeyPath, [Port].
+    Reads CSV columns: Server, Username, KeyPath, [Port].
     Returns PSCustomObjects with Server, UserName, KeyPath, and Port.
 .PARAMETER Path
     Path to the CSV file.
@@ -24,24 +23,17 @@ function Import-VMCredentials {
     param(
         [Parameter(Mandatory)][string]$Path
     )
-    if (-Not (Test-Path $Path)) {
-        Throw "VM credentials file not found at path $Path"
+    if (-not (Test-Path $Path)) {
+        Throw "VM credentials file not found: $Path"
     }
     Import-Csv -Path $Path | ForEach-Object {
-        # Normalize KeyPath: must be provided for SSH key auth
-        if (-not $_.PSObject.Properties.Match('KeyPath') -or [string]::IsNullOrWhiteSpace($_.KeyPath)) {
-            Throw "KeyPath is required for non-interactive SSH sessions (Server: $($_.Server))"
-        }
-        $keyPath = $_.KeyPath
-        # Parse Port: default to 22 if missing or invalid
+        if (-not $_.KeyPath) { Throw "KeyPath is required for $($_.Server)" }
         $port = 22
-        if ($_.PSObject.Properties.Match('Port')) {
-            $p = 0; if ([int]::TryParse($_.Port, [ref]$p)) { $port = $p }
-        }
+        if ($_.Port -and [int]::TryParse($_.Port, [ref]$port)) { $port = [int]$_.Port }
         [PSCustomObject]@{
             Server   = $_.Server
             UserName = $_.Username
-            KeyPath  = $keyPath
+            KeyPath  = $_.KeyPath
             Port     = $port
         }
     }
@@ -49,71 +41,101 @@ function Import-VMCredentials {
 
 <#
 .SYNOPSIS
-    Collects CPU, memory, and disk usage metrics from Linux servers.
+    Starts background jobs to collect system metrics for each VM.
 .DESCRIPTION
-    Performs a ping check, then connects via SSHTransport PSSession to each VM using key authentication.
+    For each VM object (Server, UserName, KeyPath, Port), tests connectivity and
+    starts a PowerShell job that establishes an SSHTransport session, gathers CPU,
+    memory, and disk metrics, and returns them as PSCustomObjects.
 .PARAMETER VMList
-    Array of objects from Import-VMCredentials with Server, UserName, KeyPath, Port.
+    Array of VM info objects from Import-VMCredentials.
 .OUTPUTS
-    PSCustomObject with Server, CPUUsagePercent, MemoryUsagePercent, DiskUsagePercent.
+    Job[]: Array of PowerShell Job objects representing the background tasks.
 .EXAMPLE
-    $metrics = Collect-SystemMetrics -VMList $vmList
+    $jobs = Start-SystemMetricsJobs -VMList $vmList
 #>
-function Collect-SystemMetrics {
+function Start-SystemMetricsJobs {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][PSObject[]]$VMList
     )
 
-    $results = @()
+    $jobs = @()
     foreach ($vm in $VMList) {
-        Write-Host "Testing connectivity to $($vm.Server) on port $($vm.Port)..."
+        Write-Host "Checking connectivity to $($vm.Server)..."
         if (-not (Test-Connection -ComputerName $vm.Server -Count 1 -Quiet)) {
-            Write-Warning "Unable to reach $($vm.Server). Skipping."
+            Write-Warning "Host unreachable: $($vm.Server), skipping job creation."
             continue
         }
-        Write-Host "Establishing SSH key-based session to $($vm.Server)..."
-        try {
-            $session = New-PSSession -HostName $vm.Server -Port $vm.Port -UserName $vm.UserName \
-                -KeyFilePath $vm.KeyPath -SSHTransport
-            Write-Host "Connected to $($vm.Server). Gathering metrics..."
+        Write-Host "Starting job for $($vm.Server)..."
+        $job = Start-Job -Name "Metrics_$($vm.Server)" -ArgumentList $vm -ScriptBlock {
+            param($vm)
+            try {
+                $session = New-PSSession -HostName $vm.Server `
+                    -Port $vm.Port `
+                    -UserName $vm.UserName `
+                    -KeyFilePath $vm.KeyPath `
+                    -SSHTransport
 
-            $script = {
-                param($ServerName)
-                $load = (Get-Content -Path /proc/loadavg -Raw) -split '\s+' | Select-Object -First 1
-                $cores = (Get-Content -Path /proc/cpuinfo | Where-Object { $_ -match '^processor' }).Count
-                $cpuPercent = [math]::Round(([double]$load / $cores) * 100, 2)
-
-                $memInfo = Get-Content -Path /proc/meminfo | ForEach-Object {
-                    if ($_ -match '^(MemTotal|MemAvailable):\s+(\d+)') {
-                        @{ Key = $matches[1]; Value = [int]$matches[2] }
+                $script = {
+                    param($Name)
+                    $load = (Get-Content /proc/loadavg -Raw) -split '\s+' | Select-Object -First 1
+                    $cores = (Get-Content /proc/cpuinfo | Where-Object { $_ -match '^processor' }).Count
+                    $cpu = [math]::Round(([double]$load / $cores) * 100, 2)
+                    $memInfo = Get-Content /proc/meminfo | ForEach-Object {
+                        if ($_ -match '^(MemTotal|MemAvailable):\s+(\d+)') { @{ Key = $matches[1]; Value = [int]$matches[2] } }
+                    }
+                    $total = ($memInfo | Where-Object Key -eq 'MemTotal').Value
+                    $avail = ($memInfo | Where-Object Key -eq 'MemAvailable').Value
+                    $mem = [math]::Round((($total - $avail) / $total) * 100, 2)
+                    $diskPct = df --output=pcent / | Select-Object -Last 1 | ForEach-Object { [math]::Round([double]($_.TrimEnd('%')),2) }
+                    [PSCustomObject]@{
+                        Server             = $Name
+                        CPUUsagePercent    = $cpu
+                        MemoryUsagePercent = $mem
+                        DiskUsagePercent   = $diskPct
+                        Timestamp          = (Get-Date)
                     }
                 }
-                $totalMem = ($memInfo | Where-Object Key -eq 'MemTotal').Value
-                $availMem = ($memInfo | Where-Object Key -eq 'MemAvailable').Value
-                $memPercent = [math]::Round((($totalMem - $availMem) / $totalMem) * 100, 2)
-
-                $diskLine = df --output=pcent / | Select-Object -Last 1
-                $diskPercent = [math]::Round([double]($diskLine.TrimEnd('%')), 2)
-
-                [PSCustomObject]@{
-                    Server             = $ServerName
-                    CPUUsagePercent    = $cpuPercent
-                    MemoryUsagePercent = $memPercent
-                    DiskUsagePercent   = $diskPercent
-                }
+                $res = Invoke-Command -Session $session -ScriptBlock $script -ArgumentList $vm.Server
+                Remove-PSSession -Session $session -ErrorAction SilentlyContinue
+                return $res
+            } catch {
+                Write-Warning "Job error on $($vm.Server): $_"
             }
-
-            $metric = Invoke-Command -Session $session -ScriptBlock $script -ArgumentList $vm.Server
-            $results += $metric
-            Write-Host "Metrics collected for $($vm.Server)."
-        } catch {
-            Write-Warning "Failed to collect metrics from $($vm.Server): $_"
-        } finally {
-            if ($session) { Remove-PSSession -Session $session -ErrorAction SilentlyContinue }
         }
+        $jobs += $job
     }
-    return $results
+    return $jobs
 }
 
-Export-ModuleMember -Function Import-VMCredentials, Collect-SystemMetrics
+<#
+.SYNOPSIS
+    Collects results from metric-gathering jobs.
+.DESCRIPTION
+    Takes an array of jobs returned by Start-SystemMetricsJobs, waits for completion,
+    retrieves the output PSCustomObjects, and cleans up the jobs.
+.PARAMETER Jobs
+    Array of Job objects.
+.OUTPUTS
+    PSCustomObject[]: Combined array of metric objects from all jobs.
+.EXAMPLE
+    $metrics = Get-SystemMetricsFromJobs -Jobs $jobs
+#>
+function Get-SystemMetricsFromJobs {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][System.Management.Automation.Job[]]$Jobs
+    )
+
+    $metrics = @()
+    foreach ($job in $Jobs) {
+        Write-Host "Waiting for job $($job.Name)..."
+        $null = Wait-Job -Job $job
+        $out = Receive-Job -Job $job -ErrorAction SilentlyContinue
+        if ($out) { $metrics += $out }
+        Remove-Job -Job $job -Force
+    }
+    return $metrics
+}
+
+Export-ModuleMember -Function Import-VMCredentials, Start-SystemMetricsJobs, Get-SystemMetricsFromJobs
