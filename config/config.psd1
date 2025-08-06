@@ -17,6 +17,14 @@
     EmailTo      = 'admin@contoso.com'
     SmtpServer   = 'smtp.contoso.local'
     
+    # Automated collection settings
+     Schedule = @{ 
+        Frequency  = 'Daily';    # 'Hourly', 'Daily', or 'Weekly'
+        Time       = '03:00';    # HH:mm, used for Daily/Weekly
+        DaysOfWeek = @('Monday'); # Only if Frequency = 'Weekly'
+        TaskName   = 'SystemHealthCheck'
+    }
+
     # Threading
     MaxThreads   = 5
 }
