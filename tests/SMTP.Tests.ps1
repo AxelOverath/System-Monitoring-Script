@@ -1,19 +1,30 @@
 # Test SMTP Configuration
 param(
-    [string]$ConfigPath = ".\config\config.psd1"
+    [string]$ConfigPath = (Join-Path $PSScriptRoot "..\config\config.psd1")
 )
 
 # Load config and secrets
+Write-Host "Looking for config file at: $ConfigPath"
+if (-not (Test-Path $ConfigPath)) {
+    Write-Error "Config file not found at: $ConfigPath"
+    exit 1
+}
+
 $Config = Import-PowerShellDataFile -Path $ConfigPath
-$secretsPath = Join-Path $PSScriptRoot 'config\secrets.psd1'
+$secretsPath = Join-Path $PSScriptRoot '..\config\secrets.psd1'
+Write-Host "Looking for secrets file at: $secretsPath"
 if (Test-Path $secretsPath) {
+    Write-Host "Secrets file found, loading..."
     $secrets = Import-PowerShellDataFile -Path $secretsPath
     $Config.SmtpUsername = $secrets.SmtpUsername
     $Config.SmtpPassword = $secrets.SmtpPassword
+    Write-Host "Loaded username: $($secrets.SmtpUsername)"
+} else {
+    Write-Warning "Secrets file not found at: $secretsPath"
 }
 
 # Import alerting module
-Import-Module ".\modules\Alerting.psm1" -Force
+Import-Module (Join-Path $PSScriptRoot "..\modules\Alerting.psm1") -Force
 
 # Create a test alert
 $testAlert = [PSCustomObject]@{
