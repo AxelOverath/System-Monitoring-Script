@@ -9,6 +9,14 @@
     Configuration is passed via a hashtable with DbUser, DbPassword, DbName, DbServer, DbPort.
 #>
 
+# Load MySQL .NET Connector
+try {
+    [void][System.Reflection.Assembly]::LoadWithPartialName("MySql.Data")
+    Write-Verbose "MySQL .NET Connector loaded successfully"
+} catch {
+    Write-Warning "Failed to load MySQL .NET Connector: $_"
+}
+
 function Save-SystemMetrics {
     [CmdletBinding()]
     param(
