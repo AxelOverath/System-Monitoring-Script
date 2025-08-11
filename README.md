@@ -354,21 +354,6 @@ Invoke-Pester .\tests\ -CodeCoverage .\modules\*.psm1
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-##  Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-##  Support
-
-For support and questions:
-- Create an issue on GitHub
-- Check the [Architecture Documentation](docs/Architecture.md)
-- Review the test files for usage examples
-
 ##  Acknowledgments
 
 This project was developed with assistance from OpenAI's ChatGPT, which provided guidance on PowerShell best practices, testing frameworks, and system architecture design.
