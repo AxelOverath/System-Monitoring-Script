@@ -49,8 +49,107 @@
 
     # HTML Report configuration (PSWriteHTML)
     Report = @{
-        Enabled    = $false                              # Enable/disable HTML report generation        
+        Enabled    = $true                              # Enable/disable HTML report generation        
         OutputPath = '.\temp\SystemHealthReport.html'  # Relative or absolute path for HTML file
-        Open       = $false                             # Auto-open report in default browser
+        Open       = $true                             # Auto-open report in default browser
     }
+    # Self-healing configuration
+    SelfHealing = @{
+        Enabled = $true                                  # Enable/disable self-healing actions
+        
+        # Execution settings
+        Execution = @{
+            DefaultTimeoutSec = 30                       # Default timeout for remote commands
+            AuditLogPath      = '.\temp\selfhealing_audit.csv'  # Audit log file path
+        }
+        
+        # Action rules: when Metric compares to Value using Condition, run Action
+        Actions = @(
+            # CPU Management - Restart user service when CPU > 90%
+            @{
+                Trigger = @{
+                    Metric    = 'CPU'
+                    Condition = 'gt'                     # gt,gte,lt,lte,eq
+                    Value     = 90
+                }
+                Action = @{
+                    Type        = 'RestartService'
+                    ServiceName = 'dbus'
+                    UserService = $true                  # Use systemctl --user
+                    UseSudo     = $false
+                }
+            },
+            
+            # Disk Management - Show disk usage when Disk > 80%
+            @{
+                Trigger = @{
+                    Metric    = 'Disk'
+                    Condition = 'gt'
+                    Value     = 80
+                }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'df -h && echo "Disk usage checked"'
+                    UseSudo = $false
+                }
+            },
+            
+            # Disk Cleanup - Clean package cache when Disk > 85%
+            @{
+                Trigger = @{
+                    Metric    = 'Disk'
+                    Condition = 'gt'
+                    Value     = 85
+                }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'docker system prune -f && docker volume prune -f && echo "Docker cleanup completed"'
+                    UseSudo = $false
+                }
+            },
+            
+            # Disk Cleanup - Docker cleanup when Disk > 90%
+            @{
+                Trigger = @{
+                    Metric    = 'Disk'
+                    Condition = 'gt'
+                    Value     = 90
+                }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'docker system prune -af --volumes && docker image prune -af && echo "Aggressive Docker cleanup completed"'
+                    UseSudo = $false
+                }
+            },
+            
+            # Memory Management - Clear memory caches when Memory > 90%
+            @{
+                Trigger = @{
+                    Metric    = 'Memory'
+                    Condition = 'gt'
+                    Value     = 90
+                }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'sync; echo 3 > /proc/sys/vm/drop_caches'
+                    UseSudo = $false
+                }
+            },
+            
+            # Disk Cleanup - Clean temp files when Disk > 95%
+            @{
+                Trigger = @{
+                    Metric    = 'Disk'
+                    Condition = 'gt'
+                    Value     = 95
+                }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'find /tmp -user $USER -type f -mtime +1 -delete 2>/dev/null; docker container prune -f && echo "Emergency cleanup completed"'
+                    UseSudo = $false
+                }
+            }
+        )
+    }
+
 }

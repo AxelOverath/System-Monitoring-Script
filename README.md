@@ -1,57 +1,61 @@
 # System Monitoring Script
 
-A comprehensive PowerShell-based system monitoring solution that collects system metrics from Linux servers, stores them in a MySQL database, and sends email alerts when thresholds are exceeded.
+A comprehensive PowerShell-based system monitoring solution with **automated self-healing capabilities** that collects system metrics from remote servers via SSH, stores them in a MySQL database, generates interactive HTML reports, and automatically remediate common issues.
 
-##  Features
+## 🚀 Features
 
-- **Real-time Metrics Collection**: Collect CPU, Memory, and Disk usage statistics
-- **Database Storage**: Store metrics in MySQL database for historical tracking
+- **Real-time Metrics Collection**: Accurate CPU, Memory, and Disk usage statistics via SSH
+- **Automated Self-Healing**: Progressive remediation actions based on severity levels
+- **Database Storage**: Persistent storage in MySQL database for historical tracking
 - **Interactive HTML Reports**: Modern dashboard with charts and visualizations using PSWriteHTML
-- **Threshold-based Alerting**: Configurable thresholds with email notifications
-- **Automated Scheduling**: Built-in task scheduler integration
-- **Secure Configuration**: Separate secrets management for sensitive data
-- **Comprehensive Testing**: Full test suite with Pester framework
+- **Multi-Level Alerting**: Configurable thresholds with email notifications
+- **Docker Cleanup**: Automated Docker container, image, and volume cleanup
+- **SSH Connectivity**: Secure remote monitoring via SSH with key-based authentication
+- **Automated Scheduling**: Built-in Windows Task Scheduler integration
+- **Progressive Cleanup**: Escalating cleanup actions based on resource usage severity
+- **Comprehensive Testing**: Full test suite with disk usage simulation tools
 
-##  Project Structure
+## 📁 Project Structure
 
 ```
 System-Monitoring-Script/
- config/
-    config.psd1           # Main configuration file
-    secrets.psd1          # Sensitive data (credentials)
-    vm_credentials.csv    # Server connection details
- docs/
-    Architecture.md       # System architecture documentation
- modules/
-    Alerting.psm1        # Email alerting functionality
-    Database.psm1        # MySQL database operations
-    DataCollector.psm1   # System metrics collection
-    Reporting.psm1       # HTML report generation with PSWriteHTML
- scripts/
-    Invoke-SystemHealthCheck.ps1     # Main monitoring script
-    Register-ScheduledHealthCheck.ps1 # Task scheduler setup
- tests/
-    Database.Tests.ps1    # Database module tests
-    DataCollector.Tests.ps1 # Data collection tests
-    SMTP.Tests.ps1        # Email functionality tests
- README.md
+├── config/
+│   ├── config.psd1           # Main configuration with self-healing rules
+│   ├── secrets.psd1          # Sensitive data (credentials)
+│   └── vm_credentials.csv    # Server SSH connection details
+├── docs/
+│   └── Architecture.md       # System architecture documentation
+├── modules/
+│   ├── Alerting.psm1        # Email alerting functionality
+│   ├── Database.psm1        # MySQL database operations
+│   ├── DataCollector.psm1   # SSH-based metrics collection
+│   ├── Reporting.psm1       # HTML report generation with PSWriteHTML
+│   └── SelfHealing.psm1     # Automated remediation actions
+├── scripts/
+│   ├── Invoke-SystemHealthCheck.ps1     # Main monitoring script
+│   └── Register-ScheduledHealthCheck.ps1 # Task scheduler setup
+├── tests/
+│   ├── Database.Tests.ps1    # Database module tests
+│   ├── DataCollector.Tests.ps1 # Data collection tests
+│   ├── SMTP.Tests.ps1        # Email functionality tests
+│   └── Test-DiskUsage.ps1    # Disk usage simulation tool
+└── README.md
 ```
 
-##  Prerequisites
+## 🛠️ Prerequisites
 
 ### Software Requirements
-- **PowerShell 5.1+** or **PowerShell Core 7+**
-- **MySQL Server** (XAMPP, standalone MySQL, or cloud instance)
-- **MySQL .NET Connector** (included with XAMPP)
+- **PowerShell 7.0+** (recommended) or **PowerShell 5.1+**
+- **MySQL Server** (local or remote instance)
 - **PSWriteHTML Module** (for HTML report generation)
-- **Pester 3.4.0+** (for running tests)
+- **SSH Client** (built into Windows 10/11 and PowerShell 7+)
 
 ### Server Requirements
-- **SSH access** to Linux servers for remote monitoring
-- **PowerShell Remoting** enabled for Windows servers
+- **SSH access** to Linux/Unix servers with key-based authentication
 - **Network connectivity** between monitoring server and target systems
+- **Docker** (optional, for Docker cleanup features)
 
-##  Installation & Setup
+## 📦 Installation & Setup
 
 ### 1. Clone the Repository
 ```powershell
@@ -75,9 +79,30 @@ CREATE TABLE metrics (
     disk_pct DECIMAL(5,2),
     timestamp DATETIME NOT NULL
 );
+
+CREATE TABLE self_healing_audit (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    timestamp DATETIME NOT NULL,
+    server VARCHAR(255) NOT NULL,
+    metric VARCHAR(50) NOT NULL,
+    value DECIMAL(5,2) NOT NULL,
+    action_type VARCHAR(100) NOT NULL,
+    success BOOLEAN NOT NULL,
+    INDEX idx_timestamp (timestamp),
+    INDEX idx_server (server)
+);
 ```
 
-### 3. Configure Settings
+### 3. SSH Key Setup
+```powershell
+# Generate SSH key pair (if needed)
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa
+
+# Copy public key to target servers
+ssh-copy-id -i ~/.ssh/id_rsa.pub user@target-server
+```
+
+### 4. Configure Settings
 
 #### Main Configuration (`config/config.psd1`)
 ```powershell
@@ -101,38 +126,71 @@ CREATE TABLE metrics (
     
     # Email notification configuration
     Email = @{
-        Enabled      = $true                     # Enable/disable email notifications
-        From         = 'your-email@gmail.com'
+        Enabled      = $true
+        From         = 'monitoring@yourcompany.com'
         To           = 'alerts@yourcompany.com'
         SmtpServer   = 'smtp.gmail.com'
         SmtpPort     = 587
         UseSsl       = $true
-        SmtpUsername = ''                        # Set in secrets.psd1
-        SmtpPassword = ''                        # Set in secrets.psd1
+        SmtpUsername = ''        # Set in secrets.psd1
+        SmtpPassword = ''        # Set in secrets.psd1
     }
     
-    # Automated collection schedule configuration
-    Schedule = @{ 
-        Frequency  = 'Minutes'
-        Time       = '2'
-        DaysOfWeek = @('Monday')
-        TaskName   = 'SystemHealthCheck'
-    }
-    
-    # Threading configuration
-    Threading = @{
-        MaxThreads = 5
-    }
-    
-    # HTML Report configuration
-    Report = @{
-        Enabled    = $true
-        OutputPath = '.\temp\SystemHealthReport.html'
-        Open       = $false
+    # Self-healing configuration with progressive actions
+    SelfHealing = @{
+        Enabled = $true
+        DefaultTimeoutSec = 30
+        AuditLogPath = '.\temp\selfhealing_audit.csv'
+        
+        # Progressive remediation rules
+        Rules = @(
+            # CPU Management - Restart service when CPU > 85%
+            @{
+                Trigger = @{
+                    Metric    = 'CPU'
+                    Condition = 'gt'
+                    Value     = 85
+                }
+                Action = @{
+                    Type        = 'RestartService'
+                    ServiceName = 'nginx'
+                    UserService = $true  # systemctl --user
+                }
+            },
+            
+            # Disk Management - Progressive cleanup based on severity
+            @{
+                Trigger = @{ Metric = 'Disk'; Condition = 'gt'; Value = 80 }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'df -h && echo "Disk usage checked"'
+                }
+            },
+            @{
+                Trigger = @{ Metric = 'Disk'; Condition = 'gt'; Value = 85 }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'docker system prune -f && docker volume prune -f'
+                }
+            },
+            @{
+                Trigger = @{ Metric = 'Disk'; Condition = 'gt'; Value = 90 }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'docker system prune -af --volumes && docker image prune -af'
+                }
+            },
+            @{
+                Trigger = @{ Metric = 'Disk'; Condition = 'gt'; Value = 95 }
+                Action = @{
+                    Type    = 'RunCommand'
+                    Command = 'find /tmp -user $USER -type f -mtime +1 -delete 2>/dev/null; docker container prune -f'
+                }
+            }
+        )
     }
 }
 ```
-
 #### Secrets Configuration (`config/secrets.psd1`)
 ```powershell
 @{
@@ -149,29 +207,22 @@ CREATE TABLE metrics (
 #### Server Credentials (`config/vm_credentials.csv`)
 ```csv
 Server,Username,Password,KeyPath,Port
-server1.domain.com,admin,,/path/to/ssh/key,22
-server2.domain.com,root,,/home/user/.ssh/id_rsa,2222
+192.168.1.100,admin,,C:\Users\username\.ssh\id_rsa,22
+vm1.domain.com,root,,C:\Users\username\.ssh\id_rsa,2222
+vm2.domain.com,ubuntu,,C:\Users\username\.ssh\id_rsa,2223
 ```
 
-### 4. Gmail SMTP Setup
-
-For Gmail SMTP authentication:
-
-1. **Enable 2-Factor Authentication** on your Gmail account
-2. **Generate App Password**:
-   - Go to Google Account Security  2-Step Verification
-   - Click "App passwords"
-   - Select "Mail" and generate password
-3. **Use the 16-character app password** in `secrets.psd1`
-
-##  Usage
+## 🔧 Usage
 
 ### Manual Execution
 ```powershell
-# Run system health check
-.\scripts\Invoke-SystemHealthCheck.ps1 -ConfigPath .\config\config.psd1
+# Navigate to project directory
+cd C:\Users\username\Documents\GitHub\System-Monitoring-Script
 
-# Test SMTP configuration
+# Run system health check
+pwsh -ExecutionPolicy Bypass -File .\scripts\Invoke-SystemHealthCheck.ps1 -ConfigPath .\config\config.psd1
+
+# Test specific functionality
 .\tests\SMTP.Tests.ps1
 ```
 
@@ -181,179 +232,154 @@ For Gmail SMTP authentication:
 .\scripts\Register-ScheduledHealthCheck.ps1 -ConfigPath .\config\config.psd1
 ```
 
-### Running Tests
+### Testing Tools
 ```powershell
-# Run all tests
-Invoke-Pester .\tests\
+# Simulate disk usage for testing self-healing
+.\tests\Test-DiskUsage.ps1 -Action Create -TargetPercent 90 -VMPort 2222
 
-# Run specific test
-Invoke-Pester .\tests\Database.Tests.ps1 -Verbose
+# Clean up test files
+.\tests\Test-DiskUsage.ps1 -Action Remove -VMPort 2222
+
+# Run comprehensive tests
+Invoke-Pester .\tests\ -Verbose
 ```
 
-##  Configuration Options
+## 🤖 Self-Healing Capabilities
 
-The configuration uses a consistent, grouped structure for better organization and maintainability. All related settings are grouped together in logical sections:
+The system includes **automated remediation** with progressive escalation:
 
-- **Database**: All database connection settings
-- **Thresholds**: Alert threshold values
-- **Email**: Email notification configuration with enable/disable option
-- **Schedule**: Automated collection frequency settings
-- **Threading**: Multi-threading and performance options
-- **Report**: HTML report generation settings
+### Progressive Disk Cleanup Strategy
+- **80%+ Disk Usage**: Diagnostic reporting (`df -h`)
+- **85%+ Disk Usage**: Basic Docker cleanup (`docker system prune -f`)
+- **90%+ Disk Usage**: Aggressive Docker cleanup (`docker system prune -af --volumes`)
+- **95%+ Disk Usage**: Emergency cleanup (temp files + containers)
 
-### Alert Thresholds
-Customize monitoring thresholds in `config.psd1`:
-- `Thresholds.Cpu`: CPU usage percentage (default: 85%)
-- `Thresholds.Memory`: Memory usage percentage (default: 90%)
-- `Thresholds.Disk`: Disk usage percentage (default: 80%)
+### CPU Management
+- **85%+ CPU Usage**: Restart configured services (nginx, apache, etc.)
+- **UserService Support**: `systemctl --user` commands for user services
 
-### Scheduling Options
-Configure automated collection frequency:
-```powershell
-Schedule = @{
-    Frequency  = 'Daily'        # 'Hourly', 'Daily', 'Weekly'
-    Time       = '03:00'        # HH:mm format
-    DaysOfWeek = @('Monday')    # For weekly scheduling
-    TaskName   = 'SystemHealthCheck'
-}
-```
+### Memory Management
+- **90%+ Memory Usage**: Clear system caches and buffers
 
-### Multi-threading
-Adjust concurrent job limits:
-```powershell
-Threading = @{
-    MaxThreads = 5  # Maximum parallel collection jobs
-}
-```
+### Audit Logging
+All self-healing actions are logged to:
+- **Database**: `self_healing_audit` table
+- **CSV File**: `.\temp\selfhealing_audit.csv`
+- **HTML Reports**: Actions included in monitoring dashboard
 
-### Email Notifications
-Control email alert functionality:
-```powershell
-Email = @{
-    Enabled      = $true                     # Enable/disable email notifications
-    From         = 'your-email@gmail.com'
-    To           = 'alerts@yourcompany.com'
-    SmtpServer   = 'smtp.gmail.com'
-    SmtpPort     = 587
-    UseSsl       = $true
-    SmtpUsername = ''                        # Set in secrets.psd1
-    SmtpPassword = ''                        # Set in secrets.psd1
-}
-```
+## 📊 Monitoring Dashboard
 
-### HTML Report Configuration
-Configure report generation settings:
-```powershell
-Report = @{
-    Enabled    = $true                              # Enable/disable report generation
-    OutputPath = '.\temp\SystemHealthReport.html'  # Output file path
-    Open       = $false                             # Auto-open in browser
-}
-```
-
-##  Monitoring Dashboard
-
-The system provides:
-- **Interactive HTML Reports**: Modern dashboard with charts, tables, and KPI cards
+### Interactive HTML Reports
 - **Real-time Metrics**: Current CPU, Memory, and Disk usage with status indicators
-- **Historical Data**: All metrics stored in MySQL with timestamps
-- **Visual Charts**: Bar charts, donut charts, and line graphs for data visualization
-- **Threshold Analysis**: Color-coded alerts and detailed threshold violation reports
-- **Export Functionality**: Export data to Excel, CSV, and PDF formats
-- **Alert Notifications**: Email alerts when thresholds are exceeded
-- **Job Status**: Background job monitoring and status reporting
+- **Historical Charts**: Visual trends and patterns
+- **Threshold Analysis**: Color-coded alerts and violation reports
+- **Self-Healing Actions**: Audit trail of automated remediation
+- **Export Options**: Excel, CSV, and PDF export functionality
 
-### HTML Report Features
-- **Dashboard Tab**: KPI cards with health status indicators and overview charts
-- **Individual Metrics Tab**: Detailed analysis for CPU, Memory, and Disk usage
-- **Interactive Tables**: Sortable, filterable data tables with search functionality
-- **Responsive Design**: Modern, professional interface that works on all devices
-- **Automatic Generation**: Reports generated after each monitoring run
+### Key Performance Indicators
+- **System Health Score**: Overall health percentage
+- **Alert Summary**: Active alerts and threshold violations
+- **Remediation Success Rate**: Self-healing effectiveness metrics
+- **Resource Utilization**: Peak and average usage statistics
 
-##  Troubleshooting
+## 🧪 Testing Framework
+
+### Disk Usage Simulation
+```powershell
+# Test different alert thresholds
+.\tests\Test-DiskUsage.ps1 -Action Create -TargetPercent 85 -VMPort 2222  # Trigger basic cleanup
+.\tests\Test-DiskUsage.ps1 -Action Create -TargetPercent 90 -VMPort 2222  # Trigger aggressive cleanup
+.\tests\Test-DiskUsage.ps1 -Action Create -TargetPercent 95 -VMPort 2222  # Trigger emergency cleanup
+```
+
+### Validation Tests
+- **SSH Connectivity**: Verify remote access to all servers
+- **Database Operations**: Test MySQL connection and data storage
+- **Email Notifications**: Validate SMTP configuration
+- **Self-Healing Actions**: Test remediation effectiveness
+
+## ⚡ Performance Features
+
+### Accurate CPU Metrics
+- **Fixed CPU Calculation**: Uses actual CPU percentage instead of load average
+- **Real-time Monitoring**: Direct parsing of `/proc/stat` and `top` output
+- **Threshold Accuracy**: Prevents false positive alerts
+
+### Efficient Data Collection
+- **Multi-threading**: Parallel collection from multiple servers
+- **SSH Optimization**: Direct SSH commands without PowerShell Remoting overhead
+- **Connection Pooling**: Reuse SSH connections for multiple commands
+
+### Smart Cleanup
+- **Docker-focused**: Targets the largest space consumers
+- **Progressive Escalation**: More aggressive cleanup as usage increases
+- **User Data Protection**: Never removes user files or important data
+
+## 🔒 Security Considerations
+
+- **SSH Key Authentication**: Secure, password-less remote access
+- **Credential Separation**: Sensitive data isolated in `secrets.psd1`
+- **Minimal Privileges**: Self-healing uses user-level permissions
+- **Audit Trail**: Complete logging of all automated actions
+- **Network Security**: SSH encryption for all remote communications
+
+## 🚨 Troubleshooting
 
 ### Common Issues
 
-#### MySQL Connection Errors
-```powershell
-# Verify MySQL service is running
-Get-Service -Name "MySQL*"
-
-# Test database connection
-Test-NetConnection -ComputerName localhost -Port 3306
-```
-
-#### SMTP Authentication Failures
-```powershell
-# Test SMTP configuration
-.\tests\SMTP.Tests.ps1
-
-# Verify app password is correct (16 characters)
-```
-
-#### SSH Connection Issues
+#### SSH Connection Failures
 ```powershell
 # Test SSH connectivity
-Test-NetConnection -ComputerName server.domain.com -Port 22
+ssh -i C:\Users\username\.ssh\id_rsa -p 2222 username@127.0.0.1
 
-# Verify SSH key permissions (Linux)
-chmod 600 /path/to/ssh/key
+# Check SSH key permissions
+icacls C:\Users\username\.ssh\id_rsa /inheritance:r /grant:r "$env:USERNAME:F"
 ```
 
-#### HTML Report Issues
+#### Self-Healing Not Working
 ```powershell
-# Install PSWriteHTML module if missing
-Install-Module PSWriteHTML -Scope CurrentUser
+# Check self-healing configuration
+Get-Content .\config\config.psd1 | Select-String "SelfHealing" -A 20
 
-# Verify report output directory exists
-Test-Path ".\temp\"
-
-# Check report configuration in config.psd1
+# Verify audit logs
+Get-Content .\temp\selfhealing_audit.csv | Select-Object -Last 10
 ```
 
-##  Performance Optimization
-
-### Large Scale Deployments
-- Increase `Threading.MaxThreads` for more concurrent monitoring
-- Implement database indexing on timestamp and server columns
-- Consider database partitioning for historical data
-- Use connection pooling for high-frequency monitoring
-
-### Network Optimization
-- Configure SSH connection multiplexing
-- Implement connection caching
-- Use compression for remote data collection
-
-##  Testing
-
-The project includes comprehensive tests:
-
-- **Unit Tests**: Individual module functionality
-- **Integration Tests**: End-to-end workflow testing
-- **SMTP Tests**: Email notification verification
-- **Database Tests**: MySQL connection and data storage
-
-Run tests before deployment:
+#### Database Connection Issues
 ```powershell
-# Full test suite
-Invoke-Pester .\tests\ -PassThru
+# Test MySQL connection
+Test-NetConnection -ComputerName localhost -Port 3306
 
-# Code coverage analysis
-Invoke-Pester .\tests\ -CodeCoverage .\modules\*.psm1
+# Verify credentials in secrets.psd1
 ```
 
-##  Security Considerations
+## 📈 Monitoring Best Practices
 
-- **Credential Management**: Use `secrets.psd1` for sensitive data
-- **SSH Key Security**: Proper key permissions and rotation
-- **Database Security**: Use dedicated monitoring user with minimal privileges
-- **Email Security**: App passwords instead of account passwords
-- **Network Security**: VPN or secure network segments for monitoring traffic
+### Threshold Configuration
+- **CPU**: 85% (allows for normal spikes)
+- **Memory**: 90% (prevents OOM conditions)  
+- **Disk**: 80% (provides cleanup buffer)
 
-##  License
+### Self-Healing Guidelines
+- **Test in Development**: Use `Test-DiskUsage.ps1` to validate actions
+- **Monitor Audit Logs**: Review self-healing effectiveness
+- **Gradual Rollout**: Start with safe actions, add aggressive cleanup gradually
+- **Regular Validation**: Ensure cleanup actions remain effective
+
+### Performance Optimization
+- **Schedule Frequency**: Balance monitoring needs vs. system load
+- **Parallel Jobs**: Adjust `MaxThreads` based on server count
+- **Historical Data**: Implement database retention policies
+
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-##  Acknowledgments
+## 🙏 Acknowledgments
 
-This project was developed with assistance from OpenAI's ChatGPT, which provided guidance on PowerShell best practices, testing frameworks, and system architecture design.
+This project was developed with assistance from GitHub Copilot, which provided guidance on:
+- PowerShell best practices and module design
+- SSH-based remote monitoring techniques  
+- Self-healing automation strategies
+- Progressive remediation patterns
+- Testing frameworks and validation tools

@@ -108,9 +108,21 @@ function Start-SystemMetricsJobs {
 
                 $script = {
                     param($Name)
-                    $load = (Get-Content /proc/loadavg -Raw) -split '\s+' | Select-Object -First 1
-                    $cores = (Get-Content /proc/cpuinfo | Where-Object { $_ -match '^processor' }).Count
-                    $cpu = [math]::Round(([double]$load / $cores) * 100, 2)
+                    # Get actual CPU usage from top command (not load average)
+                    $topOutput = top -bn1 | grep 'Cpu(s):' | head -1
+                    if ($topOutput -match 'Cpu\(s\):\s+([\d.]+)\s*%?us.*?([\d.]+)\s*%?id') {
+                        $userCpu = [double]$matches[1]
+                        $idleCpu = [double]$matches[2] 
+                        $cpu = [math]::Round(100 - $idleCpu, 2)
+                    } else {
+                        # Fallback: parse /proc/stat for more reliable CPU calculation
+                        $statLine = (Get-Content /proc/stat | Select-Object -First 1) -split '\s+'
+                        $idle = [long]$statLine[4]
+                        $total = ($statLine[1..7] | ForEach-Object { [long]$_ } | Measure-Object -Sum).Sum
+                        $cpu = [math]::Round((($total - $idle) / $total) * 100, 2)
+                    }
+                    if ($cpu -lt 0) { $cpu = 0 }
+                    if ($cpu -gt 100) { $cpu = 100 }
 
                     $memInfo = Get-Content /proc/meminfo | ForEach-Object {
                         if ($_ -match '^(MemTotal|MemAvailable):\s+(\d+)') { @{ Key = $matches[1]; Value = [int]$matches[2] } }

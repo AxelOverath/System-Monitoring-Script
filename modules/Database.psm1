@@ -24,38 +24,52 @@ function Save-SystemMetrics {
         [Parameter(Mandatory)][hashtable]$DbConfig
     )
 
-    # Build connection string
-    $cs = "Server=$($DbConfig.Server);Port=$($DbConfig.Port);Database=$($DbConfig.Name);Uid=$($DbConfig.User);Pwd=$($DbConfig.Password);"
+    try {
+        # Build connection string
+        $cs = "Server=$($DbConfig.Server);Port=$($DbConfig.Port);Database=$($DbConfig.Name);Uid=$($DbConfig.User);Pwd=$($DbConfig.Password);"
 
-    # Open connection
-    $conn = New-Object MySql.Data.MySqlClient.MySqlConnection($cs)
-    $conn.Open()
+        # Open connection
+        $conn = New-Object MySql.Data.MySqlClient.MySqlConnection($cs)
+        $conn.Open()
 
-    # Prepare command template
-    $colNames = 'server, cpu_pct, mem_pct, disk_pct, timestamp'
-    $paramList = '@server, @cpu, @mem, @disk, @ts'
-    $sql = "INSERT INTO metrics ($colNames) VALUES ($paramList)"
-    $cmd = $conn.CreateCommand()
-    $cmd.CommandText = $sql
+        # Prepare command template
+        $colNames = 'server, cpu_pct, mem_pct, disk_pct, timestamp'
+        $paramList = '@server, @cpu, @mem, @disk, @ts'
+        $sql = "INSERT INTO metrics ($colNames) VALUES ($paramList)"
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = $sql
 
-    foreach ($row in $Metrics) {
-        # Clear previous parameters
-        $cmd.Parameters.Clear()
+        foreach ($row in $Metrics) {
+            # Clear previous parameters
+            $cmd.Parameters.Clear()
 
-        # Add parameters
-        $cmd.Parameters.AddWithValue('@server', $row.Server) | Out-Null
-        $cmd.Parameters.AddWithValue('@cpu',    $row.CPUUsagePercent)    | Out-Null
-        $cmd.Parameters.AddWithValue('@mem',    $row.MemoryUsagePercent) | Out-Null
-        $cmd.Parameters.AddWithValue('@disk',   $row.DiskUsagePercent)   | Out-Null
-        $cmd.Parameters.AddWithValue('@ts',     $row.Timestamp)         | Out-Null
+            # Add parameters
+            $cmd.Parameters.AddWithValue('@server', $row.Server) | Out-Null
+            $cmd.Parameters.AddWithValue('@cpu',    $row.CPUUsagePercent)    | Out-Null
+            $cmd.Parameters.AddWithValue('@mem',    $row.MemoryUsagePercent) | Out-Null
+            $cmd.Parameters.AddWithValue('@disk',   $row.DiskUsagePercent)   | Out-Null
+            $cmd.Parameters.AddWithValue('@ts',     $row.Timestamp)         | Out-Null
 
-        # Execute
-        $cmd.ExecuteNonQuery() | Out-Null
+            # Execute
+            $cmd.ExecuteNonQuery() | Out-Null
+        }
+
+        # Close connection
+        $conn.Close()
+        $conn.Dispose()
+        
+        Write-Verbose "Successfully saved $($Metrics.Count) metrics to database"
+        
+    } catch {
+        Write-Warning "Failed to save metrics to database: $($_.Exception.Message)"
+        Write-Host "Database connection failed. Metrics were collected but not persisted." -ForegroundColor Yellow
+        
+        # Clean up connection if it exists
+        if ($conn -and $conn.State -eq 'Open') {
+            $conn.Close()
+            $conn.Dispose()
+        }
     }
-
-    # Close connection
-    $conn.Close()
-    $conn.Dispose()
 }
 
 Export-ModuleMember -Function Save-SystemMetrics
