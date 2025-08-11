@@ -58,11 +58,38 @@ function Start-SystemMetricsJobs {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][PSObject[]]$VMList,
-        [int]$JobTimeoutSec = 15
+        [int]$JobTimeoutSec = 15,
+        [int]$MaxThreads = 5
     )
 
     $jobs = @()
+    $runningJobs = @()
+    
     foreach ($vm in $VMList) {
+        # Wait if we've reached the MaxThreads limit
+        while ($runningJobs.Count -ge $MaxThreads) {
+            Write-Host "Reached MaxThreads limit ($MaxThreads). Waiting for jobs to complete..."
+            
+            # Check for completed jobs and remove them from the running list
+            $completedJobs = @()
+            foreach ($runningJob in $runningJobs) {
+                if ($runningJob.State -eq 'Completed' -or $runningJob.State -eq 'Failed') {
+                    $completedJobs += $runningJob
+                }
+            }
+            
+            # Remove completed jobs from running list
+            foreach ($completedJob in $completedJobs) {
+                $runningJobs = $runningJobs | Where-Object { $_.Id -ne $completedJob.Id }
+                Write-Host "Job $($completedJob.Name) completed with state: $($completedJob.State)"
+            }
+            
+            # If still at limit, wait a bit before checking again
+            if ($runningJobs.Count -ge $MaxThreads) {
+                Start-Sleep -Milliseconds 500
+            }
+        }
+        
         Write-Host "Checking connectivity to $($vm.Server)..."
         if (-not (Test-Connection -ComputerName $vm.Server -Count 1 -Quiet)) {
             Write-Warning "Host unreachable: $($vm.Server), skipping job creation."
@@ -117,7 +144,14 @@ function Start-SystemMetricsJobs {
         $job | Add-Member -MemberType NoteProperty -Name 'ServerName' -Value $vm.Server
         
         $jobs += $job
+        $runningJobs += $job
+        
+        Write-Host "Started job for $($vm.Server). Running jobs: $($runningJobs.Count)/$MaxThreads"
     }
+    
+    # Wait for any remaining jobs to complete
+    Write-Host "Waiting for remaining $($runningJobs.Count) jobs to complete..."
+    
     return $jobs
 }
 

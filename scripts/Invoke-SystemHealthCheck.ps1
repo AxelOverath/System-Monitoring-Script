@@ -39,7 +39,7 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\Reporting.psm1')    -Force
 $vmList = Import-VMCredentials -Path (Join-Path $PSScriptRoot '..\config\vm_credentials.csv')
 
 # 4. Start collection jobs
-$jobs = Start-SystemMetricsJobs -VMList $vmList
+$jobs = Start-SystemMetricsJobs -VMList $vmList -MaxThreads $Config.MaxThreads
 
 # 5. Retrieve job results
 $metrics = Get-SystemMetricsFromJobs -Jobs $jobs

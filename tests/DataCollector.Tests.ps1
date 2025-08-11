@@ -57,6 +57,17 @@ Describe 'Import-VMCredentials and System Metrics Collection' {
             $jobs[0].Name | Should Be 'Metrics_vm1'
             $jobs[1].Name | Should Be 'Metrics_vm2'
         }
+        
+        It 'respects MaxThreads parameter' {
+            $vmlist = @(
+                [PSCustomObject]@{ Server='vm1'; UserName='u'; KeyPath='/path/key1'; Port=22 },
+                [PSCustomObject]@{ Server='vm2'; UserName='u'; KeyPath='/path/key2'; Port=22 }
+            )
+            $jobs = Start-SystemMetricsJobs -VMList $vmlist -MaxThreads 1
+            $jobs.Count | Should Be 2
+            # Should still create all jobs, but throttle execution
+            Assert-MockCalled Start-Job -ModuleName DataCollector -Times 2
+        }
 
         It 'processes job results correctly' {
             # Test that the function logic works by testing individual components

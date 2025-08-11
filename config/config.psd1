@@ -40,7 +40,7 @@
 
     # HTML Report settings (PSWriteHTML)
     Report = @{
-        Enabled    = $false                              # Enable/disable HTML report generation
+        Enabled    = $false                              # Enable/disable HTML report generation        
         OutputPath = '.\temp\SystemHealthReport.html'  # Relative or absolute path for HTML file
         Open       = $false                             # Auto-open report in default browser
     }
