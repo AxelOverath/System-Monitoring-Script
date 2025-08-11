@@ -82,17 +82,24 @@ CREATE TABLE metrics (
 #### Main Configuration (`config/config.psd1`)
 ```powershell
 @{
-    # Database Settings
-    DbServer   = 'localhost'
-    DbPort     = 3306
-    DbName     = 'system_health'
+    # Database configuration
+    Database = @{
+        Type     = 'MySql'
+        Server   = 'localhost'
+        Port     = 3306
+        Name     = 'system_health'
+        User     = ''            # Set in secrets.psd1
+        Password = ''            # Set in secrets.psd1
+    }
     
-    # Alert Thresholds (%)
-    CpuThreshold    = 85
-    MemoryThreshold = 90
-    DiskThreshold   = 80
+    # Alert threshold configuration (percent)
+    Thresholds = @{
+        Cpu    = 85
+        Memory = 90
+        Disk   = 80
+    }
     
-    # Email Settings
+    # Email notification configuration
     Email = @{
         Enabled      = $true                     # Enable/disable email notifications
         From         = 'your-email@gmail.com'
@@ -104,7 +111,20 @@ CREATE TABLE metrics (
         SmtpPassword = ''                        # Set in secrets.psd1
     }
     
-    # HTML Report Settings
+    # Automated collection schedule configuration
+    Schedule = @{ 
+        Frequency  = 'Minutes'
+        Time       = '2'
+        DaysOfWeek = @('Monday')
+        TaskName   = 'SystemHealthCheck'
+    }
+    
+    # Threading configuration
+    Threading = @{
+        MaxThreads = 5
+    }
+    
+    # HTML Report configuration
     Report = @{
         Enabled    = $true
         OutputPath = '.\temp\SystemHealthReport.html'
@@ -172,11 +192,20 @@ Invoke-Pester .\tests\Database.Tests.ps1 -Verbose
 
 ##  Configuration Options
 
+The configuration uses a consistent, grouped structure for better organization and maintainability. All related settings are grouped together in logical sections:
+
+- **Database**: All database connection settings
+- **Thresholds**: Alert threshold values
+- **Email**: Email notification configuration with enable/disable option
+- **Schedule**: Automated collection frequency settings
+- **Threading**: Multi-threading and performance options
+- **Report**: HTML report generation settings
+
 ### Alert Thresholds
 Customize monitoring thresholds in `config.psd1`:
-- `CpuThreshold`: CPU usage percentage (default: 85%)
-- `MemoryThreshold`: Memory usage percentage (default: 90%)
-- `DiskThreshold`: Disk usage percentage (default: 80%)
+- `Thresholds.Cpu`: CPU usage percentage (default: 85%)
+- `Thresholds.Memory`: Memory usage percentage (default: 90%)
+- `Thresholds.Disk`: Disk usage percentage (default: 80%)
 
 ### Scheduling Options
 Configure automated collection frequency:
@@ -192,7 +221,24 @@ Schedule = @{
 ### Multi-threading
 Adjust concurrent job limits:
 ```powershell
-MaxThreads = 5  # Maximum parallel collection jobs
+Threading = @{
+    MaxThreads = 5  # Maximum parallel collection jobs
+}
+```
+
+### Email Notifications
+Control email alert functionality:
+```powershell
+Email = @{
+    Enabled      = $true                     # Enable/disable email notifications
+    From         = 'your-email@gmail.com'
+    To           = 'alerts@yourcompany.com'
+    SmtpServer   = 'smtp.gmail.com'
+    SmtpPort     = 587
+    UseSsl       = $true
+    SmtpUsername = ''                        # Set in secrets.psd1
+    SmtpPassword = ''                        # Set in secrets.psd1
+}
 ```
 
 ### HTML Report Configuration
@@ -268,7 +314,7 @@ Test-Path ".\temp\"
 ##  Performance Optimization
 
 ### Large Scale Deployments
-- Increase `MaxThreads` for more concurrent monitoring
+- Increase `Threading.MaxThreads` for more concurrent monitoring
 - Implement database indexing on timestamp and server columns
 - Consider database partitioning for historical data
 - Use connection pooling for high-frequency monitoring
