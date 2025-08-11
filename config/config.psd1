@@ -23,10 +23,16 @@
 
     # Automated collection settings
     Schedule = @{ 
-        Frequency  = 'Daily'        # 'Hourly', 'Daily', or 'Weekly'
-        Time       = '03:00'        # HH:mm, used for Daily/Weekly
+        Frequency  = 'Minutes'        # 'Minutes', 'Hourly', 'Daily', or 'Weekly'
+        Time       = '2'        # HH:mm for Daily/Weekly OR minutes (1-59) for Minutes frequency
         DaysOfWeek = @('Monday')    # Only if Frequency = 'Weekly'
         TaskName   = 'SystemHealthCheck'
+        
+        # Examples:
+        # For every 10 minutes: Frequency = 'Minutes', Time = '10'
+        # For every hour:       Frequency = 'Hourly', Time = '00:00' (ignored)
+        # For daily at 3 AM:    Frequency = 'Daily', Time = '03:00'
+        # For weekly Monday 3AM: Frequency = 'Weekly', Time = '03:00', DaysOfWeek = @('Monday')
     }
 
     # Threading
@@ -34,8 +40,8 @@
 
     # HTML Report settings (PSWriteHTML)
     Report = @{
-        Enabled    = $true                              # Enable/disable HTML report generation
+        Enabled    = $false                              # Enable/disable HTML report generation
         OutputPath = '.\temp\SystemHealthReport.html'  # Relative or absolute path for HTML file
-        Open       = $true                             # Auto-open report in default browser
+        Open       = $false                             # Auto-open report in default browser
     }
 }
