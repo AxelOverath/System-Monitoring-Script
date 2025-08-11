@@ -93,11 +93,16 @@ CREATE TABLE metrics (
     DiskThreshold   = 80
     
     # Email Settings
-    EmailFrom    = 'your-email@gmail.com'
-    EmailTo      = 'alerts@yourcompany.com'
-    SmtpServer   = 'smtp.gmail.com'
-    SmtpPort     = 587
-    UseSsl       = $true
+    Email = @{
+        Enabled      = $true                     # Enable/disable email notifications
+        From         = 'your-email@gmail.com'
+        To           = 'alerts@yourcompany.com'
+        SmtpServer   = 'smtp.gmail.com'
+        SmtpPort     = 587
+        UseSsl       = $true
+        SmtpUsername = ''                        # Set in secrets.psd1
+        SmtpPassword = ''                        # Set in secrets.psd1
+    }
     
     # HTML Report Settings
     Report = @{

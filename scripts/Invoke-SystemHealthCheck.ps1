@@ -19,14 +19,14 @@ param(
 # 1. Load config
 $Config = Import-PowerShellDataFile -Path $ConfigPath
 
-# 1a. Load secrets (DbUser/DbPassword and SMTP credentials)
+# 1a. Load secrets (Database User/Password and SMTP credentials)
 $secretsPath = Join-Path $PSScriptRoot '..\config\secrets.psd1'
 if (Test-Path $secretsPath) {
     $secrets = Import-PowerShellDataFile -Path $secretsPath
-    $Config.DbUser       = $secrets.DbUser
-    $Config.DbPassword   = $secrets.DbPassword
-    $Config.SmtpUsername = $secrets.SmtpUsername
-    $Config.SmtpPassword = $secrets.SmtpPassword
+    $Config.Database.User            = $secrets.DbUser
+    $Config.Database.Password        = $secrets.DbPassword
+    $Config.Email.SmtpUsername       = $secrets.SmtpUsername
+    $Config.Email.SmtpPassword       = $secrets.SmtpPassword
 }
 
 # 2. Import modules
@@ -39,7 +39,7 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\Reporting.psm1')    -Force
 $vmList = Import-VMCredentials -Path (Join-Path $PSScriptRoot '..\config\vm_credentials.csv')
 
 # 4. Start collection jobs
-$jobs = Start-SystemMetricsJobs -VMList $vmList -MaxThreads $Config.MaxThreads
+$jobs = Start-SystemMetricsJobs -VMList $vmList -MaxThreads $Config.Threading.MaxThreads
 
 # 5. Retrieve job results
 $metrics = Get-SystemMetricsFromJobs -Jobs $jobs
@@ -49,7 +49,8 @@ Write-Host "Collected system metrics:`n"
 $metrics | Format-Table Server,CPUUsagePercent,MemoryUsagePercent,DiskUsagePercent,Timestamp -AutoSize
 
 # 7. Persist to database
-Save-SystemMetrics -Metrics $metrics -DbConfig $Config
+# 7. Save to database
+Save-SystemMetrics -Metrics $metrics -DbConfig $Config.Database
 
 # 8. Threshold-based alerts & notifications
 $alerts = Evaluate-Thresholds -Metrics $metrics -Thresholds $Config

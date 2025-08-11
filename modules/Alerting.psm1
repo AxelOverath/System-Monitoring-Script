@@ -28,30 +28,30 @@ function Evaluate-Thresholds {
     $alerts = @()
 
     foreach ($m in $Metrics) {
-        if ($m.CPUUsagePercent -gt $Thresholds.CpuThreshold) {
+        if ($m.CPUUsagePercent -gt $Thresholds.Thresholds.Cpu) {
             $alerts += [PSCustomObject]@{
                 Server    = $m.Server
                 Metric    = 'CPU'
                 Value     = $m.CPUUsagePercent
-                Threshold = $Thresholds.CpuThreshold
+                Threshold = $Thresholds.Thresholds.Cpu
                 Timestamp = $m.Timestamp
             }
         }
-        if ($m.MemoryUsagePercent -gt $Thresholds.MemoryThreshold) {
+        if ($m.MemoryUsagePercent -gt $Thresholds.Thresholds.Memory) {
             $alerts += [PSCustomObject]@{
                 Server    = $m.Server
                 Metric    = 'Memory'
                 Value     = $m.MemoryUsagePercent
-                Threshold = $Thresholds.MemoryThreshold
+                Threshold = $Thresholds.Thresholds.Memory
                 Timestamp = $m.Timestamp
             }
         }
-        if ($m.DiskUsagePercent -gt $Thresholds.DiskThreshold) {
+        if ($m.DiskUsagePercent -gt $Thresholds.Thresholds.Disk) {
             $alerts += [PSCustomObject]@{
                 Server    = $m.Server
                 Metric    = 'Disk'
                 Value     = $m.DiskUsagePercent
-                Threshold = $Thresholds.DiskThreshold
+                Threshold = $Thresholds.Thresholds.Disk
                 Timestamp = $m.Timestamp
             }
         }
@@ -72,11 +72,20 @@ function Evaluate-Thresholds {
 function Send-Alerts {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][PSCustomObject[]]$Alerts,
+        [Parameter()][PSCustomObject[]]$Alerts,
         [Parameter(Mandatory)][hashtable]$Config
     )
     if (-not $Alerts -or $Alerts.Count -eq 0) {
         Write-Host "No alerts to send."
+        return
+    }
+
+    # Check if email notifications are enabled
+    if (-not $Config.Email.Enabled) {
+        Write-Host "Email notifications are disabled. Alerts would have been sent for:"
+        foreach ($a in $Alerts) {
+            Write-Host "  - $($a.Server): $($a.Metric) = $($a.Value)% (Threshold: $($a.Threshold)% at $($a.Timestamp))"
+        }
         return
     }
 
@@ -126,22 +135,22 @@ function Send-Alerts {
     try {
         # Prepare Send-MailMessage parameters
         $mailParams = @{
-            From       = $Config.EmailFrom
-            To         = $Config.EmailTo
+            From       = $Config.Email.From
+            To         = $Config.Email.To
             Subject    = "[ALERT] System Health Threshold Exceeded"
             Body       = $htmlBody
-            SmtpServer = $Config.SmtpServer
+            SmtpServer = $Config.Email.SmtpServer
             BodyAsHtml = $true
         }
-        if ($Config.SmtpPort)  { $mailParams.Port       = $Config.SmtpPort }
-        if ($Config.UseSsl)    { $mailParams.UseSsl     = $Config.UseSsl }
-        if ($Config.SmtpUsername -and $Config.SmtpPassword) {
-            $securePwd = ConvertTo-SecureString $Config.SmtpPassword -AsPlainText -Force
-            $mailParams.Credential = New-Object System.Management.Automation.PSCredential($Config.SmtpUsername, $securePwd)
+        if ($Config.Email.SmtpPort)  { $mailParams.Port       = $Config.Email.SmtpPort }
+        if ($Config.Email.UseSsl)    { $mailParams.UseSsl     = $Config.Email.UseSsl }
+        if ($Config.Email.SmtpUsername -and $Config.Email.SmtpPassword) {
+            $securePwd = ConvertTo-SecureString $Config.Email.SmtpPassword -AsPlainText -Force
+            $mailParams.Credential = New-Object System.Management.Automation.PSCredential($Config.Email.SmtpUsername, $securePwd)
         }
 
         Send-MailMessage @mailParams
-        Write-Host "Alert email sent successfully to $($Config.EmailTo)"
+        Write-Host "Alert email sent successfully to $($Config.Email.To)"
     }
     catch {
         Write-Warning "Failed to send alert email: $_"

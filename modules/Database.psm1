@@ -6,7 +6,7 @@
       - Connecting to MySQL
       - Inserting each metric row
       - Disconnecting from MySQL
-    Configuration is passed via a hashtable with DbUser, DbPassword, DbName, DbServer, DbPort.
+    Configuration is passed via a hashtable with User, Password, Name, Server, Port.
 #>
 
 # Load MySQL .NET Connector
@@ -25,7 +25,7 @@ function Save-SystemMetrics {
     )
 
     # Build connection string
-    $cs = "Server=$($DbConfig.DbServer);Port=$($DbConfig.DbPort);Database=$($DbConfig.DbName);Uid=$($DbConfig.DbUser);Pwd=$($DbConfig.DbPassword);"
+    $cs = "Server=$($DbConfig.Server);Port=$($DbConfig.Port);Database=$($DbConfig.Name);Uid=$($DbConfig.User);Pwd=$($DbConfig.Password);"
 
     # Open connection
     $conn = New-Object MySql.Data.MySqlClient.MySqlConnection($cs)

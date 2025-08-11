@@ -56,7 +56,7 @@ Describe "Save-SystemMetrics" {
                     [PSCustomObject]@{ Server='vm2'; CPUUsagePercent=40; MemoryUsagePercent=50; DiskUsagePercent=60; Timestamp=(Get-Date) }
                 )
                 # Sample config
-                $cfg = @{ DbServer='s'; DbPort=1; DbName='db'; DbUser='u'; DbPassword='p' }
+                $cfg = @{ Server='s'; Port=1; Name='db'; User='u'; Password='p' }
 
                 # Invoke
                 Save-SystemMetrics -Metrics $metrics -DbConfig $cfg | Out-Null

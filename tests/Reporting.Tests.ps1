@@ -33,9 +33,11 @@ Describe "Generate-SystemReport" {
         )
         
         $script:TestConfig = @{
-            CpuThreshold = 85
-            MemoryThreshold = 90
-            DiskThreshold = 80
+            Thresholds = @{
+                Cpu = 85
+                Memory = 90
+                Disk = 80
+            }
         }
     }
     

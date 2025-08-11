@@ -31,7 +31,7 @@ param(
 # 1. Load main config
 $Config = Import-PowerShellDataFile -Path $ConfigPath
 
-# 2. Merge secrets for DbUser/DbPassword if present
+# 2. Merge secrets for Database User/Password if present
 $secretsPath = Join-Path $PSScriptRoot '..\config\secrets.psd1'
 if (Test-Path $secretsPath) {
     $secrets = Import-PowerShellDataFile -Path $secretsPath

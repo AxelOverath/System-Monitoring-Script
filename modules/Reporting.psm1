@@ -234,9 +234,9 @@ function Generate-SystemReport {
                     $thresholdData = @()
                     foreach ($metric in $Metrics) {
                         $alerts = @()
-                        if ($metric.CPUUsagePercent -gt $Config.CpuThreshold) { $alerts += "CPU: $($metric.CPUUsagePercent)% > $($Config.CpuThreshold)%" }
-                        if ($metric.MemoryUsagePercent -gt $Config.MemoryThreshold) { $alerts += "Memory: $($metric.MemoryUsagePercent)% > $($Config.MemoryThreshold)%" }
-                        if ($metric.DiskUsagePercent -gt $Config.DiskThreshold) { $alerts += "Disk: $($metric.DiskUsagePercent)% > $($Config.DiskThreshold)%" }
+                        if ($metric.CPUUsagePercent -gt $Config.Thresholds.Cpu) { $alerts += "CPU: $($metric.CPUUsagePercent)% > $($Config.Thresholds.Cpu)%" }
+                        if ($metric.MemoryUsagePercent -gt $Config.Thresholds.Memory) { $alerts += "Memory: $($metric.MemoryUsagePercent)% > $($Config.Thresholds.Memory)%" }
+                        if ($metric.DiskUsagePercent -gt $Config.Thresholds.Disk) { $alerts += "Disk: $($metric.DiskUsagePercent)% > $($Config.Thresholds.Disk)%" }
                         
                         $thresholdData += [PSCustomObject]@{
                             Server = $metric.Server

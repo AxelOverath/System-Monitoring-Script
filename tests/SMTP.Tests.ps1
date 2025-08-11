@@ -16,8 +16,8 @@ Write-Host "Looking for secrets file at: $secretsPath"
 if (Test-Path $secretsPath) {
     Write-Host "Secrets file found, loading..."
     $secrets = Import-PowerShellDataFile -Path $secretsPath
-    $Config.SmtpUsername = $secrets.SmtpUsername
-    $Config.SmtpPassword = $secrets.SmtpPassword
+    $Config.Email.SmtpUsername = $secrets.SmtpUsername
+    $Config.Email.SmtpPassword = $secrets.SmtpPassword
     Write-Host "Loaded username: $($secrets.SmtpUsername)"
 } else {
     Write-Warning "Secrets file not found at: $secretsPath"
@@ -36,8 +36,9 @@ $testAlert = [PSCustomObject]@{
 }
 
 Write-Host "Testing SMTP configuration..."
-Write-Host "From: $($Config.EmailFrom)"
-Write-Host "To: $($Config.EmailTo)"
+Write-Host "Email Enabled: $($Config.Email.Enabled)"
+Write-Host "From: $($Config.Email.From)"
+Write-Host "To: $($Config.Email.To)"
 Write-Host "SMTP Server: $($Config.SmtpServer):$($Config.SmtpPort)"
 Write-Host "Username: $($Config.SmtpUsername)"
 Write-Host ""
