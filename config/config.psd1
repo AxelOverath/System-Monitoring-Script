@@ -31,4 +31,11 @@
 
     # Threading
     MaxThreads   = 5
+
+    # HTML Report settings (PSWriteHTML)
+    Report = @{
+        Enabled    = $true                              # Enable/disable HTML report generation
+        OutputPath = '.\temp\SystemHealthReport.html'  # Relative or absolute path for HTML file
+        Open       = $true                             # Auto-open report in default browser
+    }
 }

@@ -3,7 +3,8 @@
     Run a full system‐health check and store/report results.
 .DESCRIPTION
     Loads configuration (and secrets), runs DataCollector jobs, displays metrics,
-    persists to the database, evaluates thresholds, and sends email alerts.
+    persists to the database, evaluates thresholds, sends email alerts, and
+    generates an HTML report via PSWriteHTML.
 .PARAMETER ConfigPath
     Path to the Config.psd1 file.
 .EXAMPLE
@@ -32,6 +33,7 @@ if (Test-Path $secretsPath) {
 Import-Module (Join-Path $PSScriptRoot '..\modules\DataCollector.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..\modules\Database.psm1')     -Force
 Import-Module (Join-Path $PSScriptRoot '..\modules\Alerting.psm1')     -Force
+Import-Module (Join-Path $PSScriptRoot '..\modules\Reporting.psm1')    -Force
 
 # 3. Load VM credentials
 $vmList = Import-VMCredentials -Path (Join-Path $PSScriptRoot '..\config\vm_credentials.csv')
@@ -50,7 +52,28 @@ $metrics | Format-Table Server,CPUUsagePercent,MemoryUsagePercent,DiskUsagePerce
 Save-SystemMetrics -Metrics $metrics -DbConfig $Config
 
 # 8. Threshold-based alerts & notifications
-$alerts = EvaluateThresholds -Metrics $metrics -Thresholds $Config
+$alerts = Evaluate-Thresholds -Metrics $metrics -Thresholds $Config
 Send-Alerts -Alerts $alerts -Config $Config
 
-# [Optional] Self-healing / reporting steps can go here...
+# 9. Generate HTML report (PSWriteHTML)
+#    Uses Config.Report if present; otherwise falls back to defaults.
+$reportEnabled = $true
+$reportPath    = Join-Path $PSScriptRoot '..\temp\SystemHealthReport.html'
+$reportOpen    = $false
+
+if ($Config.ContainsKey('Report')) {
+    if ($null -ne $Config.Report.Enabled) { $reportEnabled = [bool]$Config.Report.Enabled }
+    if ($Config.Report.OutputPath)        { $reportPath    = $Config.Report.OutputPath }
+    if ($null -ne $Config.Report.Open)    { $reportOpen    = [bool]$Config.Report.Open }
+}
+
+if ($reportEnabled) {
+    # Ensure output folder exists
+    $outDir = Split-Path -Path $reportPath -Parent
+    if ($outDir -and -not (Test-Path $outDir)) {
+        New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+    }
+
+    Generate-SystemReport -Metrics $metrics -Config $Config -OutputPath $reportPath -Open:$reportOpen
+    Write-Host "HTML report written to: $reportPath"
+}

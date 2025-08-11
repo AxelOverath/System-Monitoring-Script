@@ -6,6 +6,7 @@ A comprehensive PowerShell-based system monitoring solution that collects system
 
 - **Real-time Metrics Collection**: Collect CPU, Memory, and Disk usage statistics
 - **Database Storage**: Store metrics in MySQL database for historical tracking
+- **Interactive HTML Reports**: Modern dashboard with charts and visualizations using PSWriteHTML
 - **Threshold-based Alerting**: Configurable thresholds with email notifications
 - **Automated Scheduling**: Built-in task scheduler integration
 - **Secure Configuration**: Separate secrets management for sensitive data
@@ -25,6 +26,7 @@ System-Monitoring-Script/
     Alerting.psm1        # Email alerting functionality
     Database.psm1        # MySQL database operations
     DataCollector.psm1   # System metrics collection
+    Reporting.psm1       # HTML report generation with PSWriteHTML
  scripts/
     Invoke-SystemHealthCheck.ps1     # Main monitoring script
     Register-ScheduledHealthCheck.ps1 # Task scheduler setup
@@ -41,6 +43,7 @@ System-Monitoring-Script/
 - **PowerShell 5.1+** or **PowerShell Core 7+**
 - **MySQL Server** (XAMPP, standalone MySQL, or cloud instance)
 - **MySQL .NET Connector** (included with XAMPP)
+- **PSWriteHTML Module** (for HTML report generation)
 - **Pester 3.4.0+** (for running tests)
 
 ### Server Requirements
@@ -54,6 +57,9 @@ System-Monitoring-Script/
 ```powershell
 git clone https://github.com/AxelOverath/System-Monitoring-Script.git
 cd System-Monitoring-Script
+
+# Install required PowerShell module
+Install-Module PSWriteHTML -Scope CurrentUser
 ```
 
 ### 2. Configure MySQL Database
@@ -92,6 +98,13 @@ CREATE TABLE metrics (
     SmtpServer   = 'smtp.gmail.com'
     SmtpPort     = 587
     UseSsl       = $true
+    
+    # HTML Report Settings
+    Report = @{
+        Enabled    = $true
+        OutputPath = '.\temp\SystemHealthReport.html'
+        Open       = $false
+    }
 }
 ```
 
@@ -177,13 +190,34 @@ Adjust concurrent job limits:
 MaxThreads = 5  # Maximum parallel collection jobs
 ```
 
+### HTML Report Configuration
+Configure report generation settings:
+```powershell
+Report = @{
+    Enabled    = $true                              # Enable/disable report generation
+    OutputPath = '.\temp\SystemHealthReport.html'  # Output file path
+    Open       = $false                             # Auto-open in browser
+}
+```
+
 ##  Monitoring Dashboard
 
 The system provides:
-- **Real-time Metrics**: Current CPU, Memory, and Disk usage
+- **Interactive HTML Reports**: Modern dashboard with charts, tables, and KPI cards
+- **Real-time Metrics**: Current CPU, Memory, and Disk usage with status indicators
 - **Historical Data**: All metrics stored in MySQL with timestamps
+- **Visual Charts**: Bar charts, donut charts, and line graphs for data visualization
+- **Threshold Analysis**: Color-coded alerts and detailed threshold violation reports
+- **Export Functionality**: Export data to Excel, CSV, and PDF formats
 - **Alert Notifications**: Email alerts when thresholds are exceeded
 - **Job Status**: Background job monitoring and status reporting
+
+### HTML Report Features
+- **Dashboard Tab**: KPI cards with health status indicators and overview charts
+- **Individual Metrics Tab**: Detailed analysis for CPU, Memory, and Disk usage
+- **Interactive Tables**: Sortable, filterable data tables with search functionality
+- **Responsive Design**: Modern, professional interface that works on all devices
+- **Automatic Generation**: Reports generated after each monitoring run
 
 ##  Troubleshooting
 
@@ -213,6 +247,17 @@ Test-NetConnection -ComputerName server.domain.com -Port 22
 
 # Verify SSH key permissions (Linux)
 chmod 600 /path/to/ssh/key
+```
+
+#### HTML Report Issues
+```powershell
+# Install PSWriteHTML module if missing
+Install-Module PSWriteHTML -Scope CurrentUser
+
+# Verify report output directory exists
+Test-Path ".\temp\"
+
+# Check report configuration in config.psd1
 ```
 
 ##  Performance Optimization

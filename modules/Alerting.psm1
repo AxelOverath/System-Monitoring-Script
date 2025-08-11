@@ -152,4 +152,4 @@ function Send-Alerts {
     }
 }
 
-Export-ModuleMember -Function EvaluateThresholds, Send-Alerts
+Export-ModuleMember -Function Evaluate-Thresholds, Send-Alerts

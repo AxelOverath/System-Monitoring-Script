@@ -41,22 +41,24 @@ function Import-VMCredentials {
 
 <#
 .SYNOPSIS
-    Starts background jobs to collect system metrics for each VM.
+    Starts background jobs to collect system metrics for each VM, with a per-job timeout.
 .DESCRIPTION
-    For each VM object (Server, UserName, KeyPath, Port), tests connectivity and
-    starts a PowerShell job that establishes an SSHTransport session, gathers CPU,
-    memory, and disk metrics, and returns them as PSCustomObjects.
+    For each VM (Server, UserName, KeyPath, Port), checks reachability, spins a job that
+    SSHes in, gathers metrics, and returns PSCustomObjects. A watchdog timer stops any job
+    that exceeds -JobTimeoutSec to prevent indefinite hangs.
 .PARAMETER VMList
     Array of VM info objects from Import-VMCredentials.
+.PARAMETER JobTimeoutSec
+    Seconds to allow each job to run before being stopped (default 45).
 .OUTPUTS
-    Job[]: Array of PowerShell Job objects representing the background tasks.
-.EXAMPLE
-    $jobs = Start-SystemMetricsJobs -VMList $vmList
+    Job[] array of PowerShell jobs.
 #>
 function Start-SystemMetricsJobs {
+    
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][PSObject[]]$VMList
+        [Parameter(Mandatory)][PSObject[]]$VMList,
+        [int]$JobTimeoutSec = 15
     )
 
     $jobs = @()
@@ -66,6 +68,7 @@ function Start-SystemMetricsJobs {
             Write-Warning "Host unreachable: $($vm.Server), skipping job creation."
             continue
         }
+
         Write-Host "Starting job for $($vm.Server)..."
         $job = Start-Job -Name "Metrics_$($vm.Server)" -ArgumentList $vm -ScriptBlock {
             param($vm)
@@ -81,13 +84,16 @@ function Start-SystemMetricsJobs {
                     $load = (Get-Content /proc/loadavg -Raw) -split '\s+' | Select-Object -First 1
                     $cores = (Get-Content /proc/cpuinfo | Where-Object { $_ -match '^processor' }).Count
                     $cpu = [math]::Round(([double]$load / $cores) * 100, 2)
+
                     $memInfo = Get-Content /proc/meminfo | ForEach-Object {
                         if ($_ -match '^(MemTotal|MemAvailable):\s+(\d+)') { @{ Key = $matches[1]; Value = [int]$matches[2] } }
                     }
                     $total = ($memInfo | Where-Object Key -eq 'MemTotal').Value
                     $avail = ($memInfo | Where-Object Key -eq 'MemAvailable').Value
                     $mem = [math]::Round((($total - $avail) / $total) * 100, 2)
+
                     $diskPct = df --output=pcent / | Select-Object -Last 1 | ForEach-Object { [math]::Round([double]($_.TrimEnd('%')),2) }
+
                     [PSCustomObject]@{
                         Server             = $Name
                         CPUUsagePercent    = $cpu
@@ -96,6 +102,7 @@ function Start-SystemMetricsJobs {
                         Timestamp          = (Get-Date)
                     }
                 }
+
                 $res = Invoke-Command -Session $session -ScriptBlock $script -ArgumentList $vm.Server
                 Remove-PSSession -Session $session -ErrorAction SilentlyContinue
                 return $res
@@ -103,10 +110,17 @@ function Start-SystemMetricsJobs {
                 Write-Warning "Job error on $($vm.Server): $_"
             }
         }
+        
+        # Add custom properties to track timeout
+        $job | Add-Member -MemberType NoteProperty -Name 'StartTime' -Value (Get-Date)
+        $job | Add-Member -MemberType NoteProperty -Name 'TimeoutSeconds' -Value $JobTimeoutSec
+        $job | Add-Member -MemberType NoteProperty -Name 'ServerName' -Value $vm.Server
+        
         $jobs += $job
     }
     return $jobs
 }
+
 
 <#
 .SYNOPSIS
@@ -130,11 +144,49 @@ function Get-SystemMetricsFromJobs {
     $metrics = @()
     foreach ($job in $Jobs) {
         Write-Host "Waiting for job $($job.Name)..."
-        $null = Wait-Job -Job $job
-        $out = Receive-Job -Job $job -ErrorAction SilentlyContinue
-        if ($out) { $metrics += $out }
-        Remove-Job -Job $job -Force
+        
+        # Check if job has timeout information
+        $timeoutSeconds = if ($job.PSObject.Properties['TimeoutSeconds']) { $job.TimeoutSeconds } else { 30 }
+        $startTime = if ($job.PSObject.Properties['StartTime']) { $job.StartTime } else { Get-Date }
+        $serverName = if ($job.PSObject.Properties['ServerName']) { $job.ServerName } else { $job.Name }
+        
+        # Wait for job with timeout
+        $waitResult = $null
+        try {
+            $waitResult = Wait-Job -Job $job -Timeout $timeoutSeconds
+        } catch {
+            Write-Warning "Error waiting for job $($job.Name): $_"
+        }
+        
+        # Check if job completed or timed out
+        if ($job.State -eq 'Running') {
+            $elapsed = ((Get-Date) - $startTime).TotalSeconds
+            Write-Warning "Job '$($job.Name)' for server '$serverName' timed out after $([math]::Round($elapsed, 1)) seconds. Stopping job."
+            Stop-Job -Job $job -ErrorAction SilentlyContinue
+        } elseif ($job.State -eq 'Completed') {
+            Write-Host "Job '$($job.Name)' completed successfully."
+            $out = Receive-Job -Job $job -ErrorAction SilentlyContinue
+            if ($out) { 
+                $metrics += $out 
+                Write-Host "Retrieved metrics for $serverName"
+            } else {
+                Write-Warning "No output received from job '$($job.Name)' for server '$serverName'"
+            }
+        } elseif ($job.State -eq 'Failed') {
+            Write-Warning "Job '$($job.Name)' for server '$serverName' failed."
+            $errorInfo = Receive-Job -Job $job -ErrorAction SilentlyContinue
+            if ($errorInfo) {
+                Write-Warning "Job error details: $errorInfo"
+            }
+        } else {
+            Write-Warning "Job '$($job.Name)' for server '$serverName' ended with state: $($job.State)"
+        }
+        
+        # Clean up job
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
+    
+    Write-Host "Collected metrics from $($metrics.Count) servers"
     return $metrics
 }
 
